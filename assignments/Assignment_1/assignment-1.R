@@ -1,5 +1,6 @@
 library(readr)
 library(dplyr)
+library(rmarkdown)
 
 # Open Covid dataset for state of ohio by The COVID Tracking project - covidtracking.com 
 data <- read_csv("https://covidtracking.com/data/download/ohio-history.csv")

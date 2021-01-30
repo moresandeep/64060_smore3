@@ -1,0 +1,98 @@
+---
+title: "Assignment 1"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+The following document includes Assignment 1 code and results
+
+The following libraries are included for this assignment
+
+* **readr** : to read dataset from a url
+* **dplyr** : for dataset manapulation
+* **rmarkdown** : for markdown
+
+```{r include=FALSE}
+library(readr)
+library(dplyr)
+library(rmarkdown)
+```
+
+We will be using the Open Covid dataset 
+for state of Ohio by The COVID Tracking project. 
+See covidtracking.com for more details about the dataset.
+
+```{r include=FALSE}
+data <- read_csv("https://covidtracking.com/data/download/ohio-history.csv")
+```
+
+```{r include=FALSE}
+# Summary of all the columns
+#summary(data)
+#View(data)
+```
+
+Convert the table into dataframe so it is easy to work with.
+```{r include=FALSE}
+as.data.frame(data)
+```
+
+
+## Print descriptive statistics for quantitative variable 
+To print descriptive statistics we will be using the package dplyr: https://dplyr.tidyverse.org/reference/summarise_all.html
+
+For the sake of readability we will be using the pipe notation `%>%` heavily used by dplyr.
+We pipe/chain function  to select the columns death and hospitalized and calulate their mean, min and max.
+
+Heavylifting is done by the `summarise_at` function it takes the following arguments:
+
+* Columns to be summarized e.g. "death", "hospitalized"
+* Functions to be used to summarize e.g. mean, min and max
+* Should NA values be filtered out (TRUE)
+
+```{r echo = FALSE}
+data %>% 
+  summarise_at(c("death", "hospitalized"), list(min = min, max = max, mean = mean), na.rm = TRUE)
+```
+
+## Print descriptive statistics for categorical variable 
+Here we only print all the data that have lower quality grade (B)
+
+```{r echo = FALSE}
+data %>% 
+  filter(dataQualityGrade == 'B')
+```
+
+## Transform variable
+Get mean for columns death and hospatilized, grouped by their data quality.
+Here we use the `group_by` function that groups the reslting summary by the column `dataQualityGrade`
+
+```{r echo = FALSE}
+data %>%
+  group_by(dataQualityGrade)%>% 
+  summarise(Death = mean(death, na.rm=TRUE),
+            Hospitalized = mean(hospitalized, na.rm=TRUE))
+```
+
+## Plot deaths vs days only for data with quality A+
+Create an intermediate dataframe to plot the results. 
+This dataframe is created by filtering the original data to only get results for A+ quality data.
+Then select only the columns `date` and `death`
+
+```{r include=FALSE}
+filtered_Data <- data %>% 
+  filter(dataQualityGrade == 'A+') %>%
+  select(date, death)
+#head(filtered_Data)
+```
+
+This function plots the previously created dataframe.
+```{r}
+plot(filtered_Data)
+```
+
+## References
+- https://covidtracking.com/
+- https://uc-r.github.io/dplyr
+
