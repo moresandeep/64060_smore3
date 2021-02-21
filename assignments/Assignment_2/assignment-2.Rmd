@@ -1,0 +1,326 @@
+---
+title: "k-NN for classification"
+output:
+  pdf_document:
+    toc: yes
+  html_notebook:
+    highlight: textmate
+    theme: cerulean
+  html_document:
+    df_print: paged
+    toc: yes
+---
+***
+# Assignment 2 (k-NN Classification)
+
+Use k-NN to help Universal bank explore ways of converting its liability customers to personal loan customers. 
+
+***
+
+## Code walkthrough
+
+```{r include=FALSE}
+# Install necessary libraries.
+library(caret)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(FNN)
+library(gmodels)
+```
+
+load given data.
+```{r include=FALSE}
+# Data loading
+data <- read_csv("UniversalBank.csv", )
+```
+
+Sample data
+```{r include=FALSE}
+head(data)
+```
+Filter out the attributes that are not needed i.e. ID and Zip Code
+```{r include=FALSE}
+filtered_data <- select(data, !c(ID, `ZIP Code`))
+```
+
+```{r}
+# display filtered data
+#head(filtered_data)
+```
+
+Reference I followed on data splitting: https://topepo.github.io/caret/data-splitting.html
+Partition the data and split it into training, test and validation data sets.
+```{r}
+set.seed(13)
+train_index = createDataPartition(filtered_data$`Personal Loan`, p=0.6, list=FALSE) # 60% training data
+# Train Data (60%)
+train_data = filtered_data[train_index,]
+
+val_test_data = filtered_data[-train_index,] # rest of the data for validation and testing
+
+test_index = createDataPartition(val_test_data$`Personal Loan`, p=0.5, list=FALSE) # 50% of the remaning data as test
+# Test Data (20%)
+test_data = val_test_data[test_index,]
+# Validation Data (20%)
+validation_data = val_test_data[-test_index,]
+```
+
+Display Train / Validation / Test data
+```{r}
+summary(train_data)
+summary(validation_data)
+summary(test_data)
+```
+
+Normalize the data using z-score scaling
+```{r}
+train.norm.df <- train_data
+valid.norm.df <- validation_data
+test.norm.df <- test_data
+
+# z-score scaling
+# normalize columns Age, Experience, Income, Family, CCAvg, Education and Mortgage
+norm.model <- preProcess(train_data[, 1:7], method=c("center", "scale"))
+
+# Apply the model
+train.norm.df[, 1:7] <- predict(norm.model, train_data[, 1:7])
+valid.norm.df[, 1:7] <- predict(norm.model, validation_data[, 1:7])
+test.norm.df[, 1:7] <- predict(norm.model, test_data[, 1:7])
+
+summary(train.norm.df)
+summary(valid.norm.df)
+summary(test.norm.df)
+```
+
+k-NN modeling
+```{r}
+library(FNN)
+# Personal Loan is the dependent variable (class output) so exclude that
+train_predictors <- subset(train.norm.df, select=-c(`Personal Loan`))
+valid_predictors <- subset(valid.norm.df, select=-c(`Personal Loan`))
+test_predictors <- subset(test.norm.df, select=-c(`Personal Loan`))
+
+# Mark labels, for some reason, knn expects labes to be a vector and not a set which is what you get from a dataframe
+# that is why we use dplyr::pull() to extract `Personal Loan` as a vector.
+train_labels <- dplyr::pull(train.norm.df, `Personal Loan`)
+valid_labels <- dplyr::pull(valid.norm.df, `Personal Loan`)
+test_labels <- dplyr::pull(test.norm.df, `Personal Loan`)
+
+# build a k-NN model
+nn <- knn(train = train_predictors, test = test_predictors, 
+          cl = train_labels, k = 1, prob=TRUE) 
+
+head(nn)
+#print(nn)
+```
+
+## Prediction
+
+## Problem 1.
+
+### Problem statement: ### 
+Given Age = 40, Experience = 10, Income = 84, Family = 2, CCAvg = 2, Education_1 = 0, Education_2 = 1, Education_3 = 0, Mortgage = 0, Securities Account = 0, CD Account = 0, Online = 1, and Credit Card = 1. 
+Perform a k-NN classification with all predictors except ID and ZIP code using k = 1.
+Success class is 1 (loan acceptance), and default cutoff value of 0.5. How would this customer be classified?
+
+```{r}
+
+# let's combine training and validation datasets before we predict 
+train_valid_data <- rbind(train_data, validation_data)
+
+# use new variables for Problem 1
+train_valid.norm.df <- train_valid_data
+test1.norm.df <- test_data
+
+norm.train_valid.model <- preProcess(train_valid_data[, 1:7], method=c("center", "scale")) 
+
+# Apply the model
+train_valid.norm.df[, 1:7] <- predict(norm.train_valid.model, train_valid_data[, 1:7])
+test1.norm.df[, 1:7] <- predict(norm.train_valid.model, test_data[, 1:7])
+
+#summary(train_valid.norm.df)
+#summary(test1.norm.df)
+
+# Build Model
+# Personal Loan is the dependent variable (class output) so exclude that
+train_valid_predictors <- subset(train_valid.norm.df, select=-c(`Personal Loan`))
+test1_predictors <- subset(test1.norm.df, select=-c(`Personal Loan`))
+problem1.test.data <- c(40, 10, 84, 2, 2, 2, 0, 0, 0, 1, 1)
+
+# Mark labels, for some reason, knn expects labes to be a vector and not a set which is what you get from a dataframe
+# that is why we use dplyr::pull() to extract `Personal Loan` as a vector.
+train_valid_labels <- dplyr::pull(train_valid.norm.df, `Personal Loan`)
+test1_labels <- dplyr::pull(test1.norm.df, `Personal Loan`)
+
+# build a k-NN model
+predicted_test_labels <- knn(train = train_valid_predictors, test = problem1.test.data, 
+          cl = train_valid_labels, k = 1, prob=TRUE) 
+
+#print(predicted_test_labels)
+
+sprintf("Nearest neighbor is: %s",row.names(train_data)[attr(predicted_test_labels, "nn.index")])
+sprintf("Classification probability is: %f",attr(predicted_test_labels, "prob"))
+```
+### Analysis: ###
+Data prep:
+The data was divided in to 60% training and 40% validation and test (requirements). 
+Which meant 20% of the data was used for validation and 20% for test. 
+Looking at the output it appears that the customer would be a good target for the personal loan offer.
+Since, our K value is too small (k=1) we are seeing overfitting. 
+
+## Problem 2 ##
+
+### Problem statement: ### 
+What is a choice of k that balances between overfitting and ignoring the predictor information?
+
+```{r message=FALSE, warning=FALSE}
+# Hypertuning with multiple K values
+library(caret)
+set.seed(13)
+# variable for number of attempts
+attempts_var = 20
+# define 20 k values with initial accuracy set to 0
+accuracy.val.df <- data.frame(k = seq(1, attempts_var, 1), accuracy = rep(0, attempts_var))
+
+# Need to convert DF to factors to work with confusion matrix
+test_labels.factor <- as.factor(test_labels)
+
+for(i in 1:attempts_var) {
+  knn.pred <- knn(train = train_predictors, test = test_predictors, 
+          cl = train_labels, k = i, prob=TRUE) 
+  # Populate the accuracy value
+  accuracy.val.df[i, 2] <- confusionMatrix(knn.pred, test_labels.factor)$overall[1] 
+}
+accuracy.val.df
+```
+### Analysis: ###
+Looking at the output above the optimal value of K is 3. 
+At k = 3 we see the accuracy is 0.968, better than others. As K is increased accuracy does not increase but it goes down. For values of k between 1 and 20 the best accuracy was observed at k = 3. This is the best value of K that balances between overfitting and ignoring the predictor information.
+
+## Problem 3 ##
+
+### Problem Statement ###
+Show the confusion matrix for the validation data that results from using the best k.
+
+### Analysis ###
+Following is the confusion matrix for our best K (k=3).
+We can see that the model has Accuracy = 0.968, Sensitivity : 0.9989 and Specificity : 0.6771. 
+
+```{r}
+knn.pred <- knn(train = train_predictors, test = test_predictors, 
+          cl = train_labels, k = 3, prob=TRUE) 
+  # Populate the accuracy value
+  confusionMatrix(knn.pred, test_labels.factor)
+```
+
+## Problem 4 ##
+
+### Problem Statement ###
+Consider the following customer: Age = 40, Experience = 10, Income = 84,
+Family = 2, CCAvg = 2, Education_1 = 0, Education_2 = 1, Education_3 = 0, Mortgage = 0, Securities Account = 0, CD Account = 0, Online = 1 and Credit Card = 1. Classify the customer using the best k.
+
+### Analysis ###
+Classifying with k=3, results displayed below. The customer would be a good target for the loan offer.
+
+```{r}
+problem4.test.data <- c(40, 10, 84, 2, 2, 2, 0, 0, 0, 1, 1)
+
+# building on previous code ...
+# build a k-NN model
+predicted_test_labels <- knn(train = train_valid_predictors, test = problem4.test.data, 
+          cl = train_valid_labels, k = 3, prob=TRUE)
+
+#predicted_test_labels
+
+sprintf("Nearest neighbor is: %s",row.names(train_data)[attr(predicted_test_labels, "nn.index")][1])
+sprintf("Closest Distance is: %s",row.names(train_data)[attr(predicted_test_labels, "nn.dist")][1])
+sprintf("Classification probability is: %f",attr(predicted_test_labels, "prob"))
+```
+
+## Problem 5 ##
+
+### Problem Statement ###
+Repartition the data into training, validation, and test sets (50% : 30% : 20%). Apply the k-NN method with the k chosen above. Compare the confusion matrix of the test set with that of the training and validation sets. Comment on the differences and their reason.
+
+```{r}
+set.seed(13)
+train_index = createDataPartition(filtered_data$`Personal Loan`, p=0.5, list=FALSE) # 50% training data
+# Train Data (60%)
+train_data = filtered_data[train_index,]
+
+val_test_data = filtered_data[-train_index,] # rest of the data for validation and testing
+
+test_index = createDataPartition(val_test_data$`Personal Loan`, p=0.4, list=FALSE) 
+# Test Data (20%)
+test_data = val_test_data[test_index,]
+# Validation Data (30%)
+validation_data = val_test_data[-test_index,]
+
+## Normalize
+train.norm.df <- train_data
+valid.norm.df <- validation_data
+test.norm.df <- test_data
+
+# z-score scaling
+# normalize columns Age, Experience, Income, Family, CCAvg, Education and Mortgage
+norm.model <- preProcess(train_data[, 1:7], method=c("center", "scale"))
+
+# Apply the model
+train.norm.df[, 1:7] <- predict(norm.model, train_data[, 1:7])
+valid.norm.df[, 1:7] <- predict(norm.model, validation_data[, 1:7])
+test.norm.df[, 1:7] <- predict(norm.model, test_data[, 1:7])
+
+## k-nn modeling
+# Personal Loan is the dependent variable (class output) so exclude that
+train_predictors <- subset(train.norm.df, select=-c(`Personal Loan`))
+valid_predictors <- subset(valid.norm.df, select=-c(`Personal Loan`))
+test_predictors <- subset(test.norm.df, select=-c(`Personal Loan`))
+
+# Mark labels, for some reason, knn expects labes to be a vector and not a set which is what you get from a dataframe
+# that is why we use dplyr::pull() to extract `Personal Loan` as a vector.
+train_labels <- dplyr::pull(train.norm.df, `Personal Loan`)
+valid_labels <- dplyr::pull(valid.norm.df, `Personal Loan`)
+test_labels <- dplyr::pull(test.norm.df, `Personal Loan`)
+
+# build a k-NN model for test
+nn_test <- knn(train = train_predictors, test = test_predictors, 
+          cl = train_labels, k = 3, prob=TRUE) 
+ 
+## confusion matrix 
+# Need to convert DF to factors to work with confusion matrix
+test_labels.factor <- as.factor(test_labels)
+print("Confusion matrix for test set")
+confusionMatrix(nn_test, test_labels.factor)
+
+# build a k-NN model for training
+nn_train <- knn(train = train_predictors, test = train_predictors, 
+          cl = train_labels, k = 3, prob=TRUE) 
+ 
+## confusion matrix 
+# Need to convert DF to factors to work with confusion matrix
+train_labels.factor <- as.factor(train_labels)
+print("Confusion matrix for train set")
+confusionMatrix(nn_train, train_labels.factor)
+
+# build a k-NN model for validation
+nn_valid <- knn(train = train_predictors, test = valid_predictors, 
+          cl = train_labels, k = 3, prob=TRUE) 
+ 
+## confusion matrix 
+# Need to convert DF to factors to work with confusion matrix
+valid_labels.factor <- as.factor(valid_labels)
+print("Confusion matrix for validation set")
+confusionMatrix(nn_valid, valid_labels.factor)
+
+```
+### Analysis ###
+Comapring the confusion matrix for the train, validation and test set we see the following
+1. Training set has the highest accuracy followed by validation set (Train Accuracy : 0.9792 > Validation Accuracy : 0.968 >  Test Accuracy : 0.963) - which is as expected since, we trained the data on training set and validation set so the model has already seen the data unlike test data set.
+2. Validation set has the highest sensitivity (proportion of positives correctly classified) followed by the training set (Validation Sensitivity : 1 > Train Sensitivity : 0.9996 > Test Sensitivity : 0.9989)
+3. Training set has the highest specificity (proportion of negative cases correctly identified as negative) (Train Specificity : 0.7830 > Validation Specificity : 0.6690 >  Test Specificity : 0.6400) - which is again what we expected.
+4. I was expecting training set numbers (accuracy, sensitivity, specificity) to be better than this given the model uses this training data. This could be because of the lazy leraning nature of k-nn algorithm.
+5. We can see that negative prediction value for for validation set is a bit better than training set.
+6. I do not understand why this is the case (slighly lower negative prediction value for training set) as a result I need to do some more reading into this subject to better understand the numbers.
+
+
