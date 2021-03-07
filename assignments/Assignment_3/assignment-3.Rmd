@@ -1,0 +1,222 @@
+---
+title: "Naive Bayes Classification."
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+  html_notebook:
+    highlight: textmate
+    theme: cerulean
+  pdf_document:
+    toc: yes
+---
+***
+# Assignment 3 (Naive Bayes Classification.)
+
+Objective here is to use Naive Bayes for classification.
+
+***
+
+## Code Prep
+
+Load given data.
+```{r include=FALSE}
+#install.packages('readr')
+library(readr)
+# Data loading
+data <- read_csv("UniversalBank.csv", )
+```
+
+Sample data
+```{r}
+head(data)
+```
+
+Filter data to only include predictors
+```{r}
+library(dplyr)
+filtered_data = select(data, c(`Personal Loan`, Online, CreditCard))
+head(filtered_data)
+#tail(filtered_data)
+```
+
+Convert the predictors to categorical variables
+```{r}
+filtered_data$`Personal Loan` <- factor(filtered_data$`Personal Loan`)
+filtered_data$Online <- factor(filtered_data$Online)
+filtered_data$CreditCard <- factor(filtered_data$CreditCard)
+```
+
+### Data Partition
+Partition the data into training (60%) and validation (40%) sets.
+```{r}
+library(caret)
+library(ggplot2)
+set.seed(13)
+train_index = createDataPartition(filtered_data$`Personal Loan`, p=0.6, list=FALSE) # 60% training data
+# Train Data (60%)
+train_data = filtered_data[train_index,]
+valid_data = filtered_data[-train_index,] # rest of the data for validation
+```
+
+
+## Solution A
+Pivot table for the training data with Online as a column variable, CC as a row variable, and Loan as a secondary row variable. 
+Good info: https://seananderson.ca/2013/10/19/reshape/
+
+### Pivot table using cast and melt 
+This pivot table is not used for subsequent calculations but more for my own reference. 
+```{r}
+#install.packages('reshape')
+library(reshape2)
+# melt the data first 
+# collapse the dataframe retaining "Online" and bringing "CreditCard" and "Personal Loan" from columns to rows
+
+train_data.melt <- melt(data = train_data, id.vars = c("CreditCard", "Personal Loan"))
+#head(train_data.melt)
+train_data.dcast <-  dcast(train_data.melt, CreditCard + `Personal Loan` ~ variable, fun.aggregate = length)
+train_data.dcast
+
+train_data.melt2 <- melt(data = train_data, id.vars = c("CreditCard", "Online"))
+#head(train_data.melt2)
+train_data.dcast <-  dcast(train_data.melt2, CreditCard + Online ~ variable)
+train_data.dcast
+
+with(train_data, table(CreditCard + Online, `Personal Loan`))
+#table(train_data)
+```
+
+### Pivot table using pivottabler
+Used for subsequent calculations. A Pivot table with `Online` as a column variable, `CC` as a row variable, and `Loan` as a secondary row variable.
+Note: pivottabler docs: https://cran.r-project.org/web/packages/pivottabler/vignettes/v00-vignettes.html
+```{r}
+library(pivottabler)
+pt <- PivotTable$new()
+pt$addData(train_data)
+pt$addColumnDataGroups("Online")
+pt$addRowDataGroups("CreditCard")
+pt$addRowDataGroups("Personal Loan", expandExistingTotals=TRUE)
+pt$defineCalculation(calculationName="Total", summariseExpression="n()")
+pt$renderPivot()
+```
+
+The pivot table above represents training data, the values in the table convey the total count of online account for different combinations of CreditCard and Personal Loan
+
+
+## Solution B
+The probability of loan acceptance when CreditCard = 1 and Online = 1 is = 49/3000 = **0.0163**
+
+## Solution C
+### Loan (rows) as a function of Online (columns) 
+
+```{r}
+library(pivottabler)
+pt <- PivotTable$new()
+pt$addData(train_data)
+pt$addColumnDataGroups("Online")
+pt$addRowDataGroups("Personal Loan")
+pt$defineCalculation(calculationName="Total", summariseExpression="n()")
+pt$renderPivot()
+```
+### Loan (rows) as a function of CC (Columns)
+
+```{r}
+library(pivottabler)
+pt <- PivotTable$new()
+pt$addData(train_data)
+pt$addColumnDataGroups("CreditCard")
+pt$addRowDataGroups("Personal Loan")
+pt$defineCalculation(calculationName="Total", summariseExpression="n()")
+pt$renderPivot()
+```
+
+## Solution D
+
+### P(CC = 1 | Loan = 1) (the proportion of credit card holders among the loan acceptors)
+
+= 86/285 = **0.301**
+
+### P(Online = 1 | Loan = 1)
+
+= 165/285 = **0.589**
+
+### P(Loan = 1) (the proportion of loan acceptors)
+
+= 285/3000 = **0.095**
+
+### P(CC=1|Loan=0)
+
+= 807/2715 = **0.297**
+
+### P(Online = 1 | Loan = 0)
+
+= 1637/2715 = **0.602**
+
+### P(Loan = 0)
+
+= 2715/3000 = **0.905**
+
+## Solution E
+Use the quantities computed above to compute the naive Bayes probability P(Loan = 1 | CC = 1, Online = 1)
+
+Using Naive Bayes formula:
+`P(Loan = 1 | CC = 1, Online = 1) = P(Loan = 1) [P(CC = 1 | Loan = 1) * P(Online = 1 |Loan = 1 )] / P(Loan = 1) [P(CC = 1 | Loan = 1) * P(Online = 1 |Loan = 1 )] + P(Loan = 0) [P(CC = 1 | Loan = 0) * P(Online = 1 |Loan = 0 )]`
+
+`P(Loan = 1 | CC = 1, Online = 1) = 0.095 ( 0.301 * 0.589) / 0.095 ( 0.301 * 0.589) + 0.905 ( 0.297 * 0.602 )`
+
+`P(Loan = 1 | CC = 1, Online = 1) = 0.0168 / 0.0168 + 0.162`
+ 
+`P(Loan = 1 | CC = 1, Online = 1) = 0.0168 / 0.179 = 0.0938`
+
+**P(Loan = 1 | CC = 1, Online = 1) = 0.0938**
+
+
+## Solution F
+
+Comparing value calculated using Naive Bayes formula = 0.0938 and value calculated using pivot table = 0.0163
+
+The one calculated from the pivot table appears to be the most correct estimate given the assumptions involved with Naive Bayes. But, looking at both the values Naive Bayes appears to be closer to the actual estimate.
+
+## Solution G
+
+Which of the entries in this table are needed for computing `P(Loan = 1 | CC = 1, Online = 1)`?
+The entries needed for computing `P(Loan = 1 | CC = 1, Online = 1)` are:
+
+* `P(Loan = 1)` 
+* `P(CC = 1 | Loan = 1)`
+* `P(Online = 1 |Loan = 1 )`
+* `P(Loan = 0)` 
+* `P(CC = 1 | Loan = 0)` 
+* `P(Online = 1 | Loan = 0 )`
+
+### Naive Bayes
+```{r}
+library(e1071)
+# or the formula could be Personal Loan` ~ Online + CreditCard
+train.nb <- naiveBayes(`Personal Loan` ~ ., data = train_data)
+train.nb
+```
+This naive bayes model is similar to the ones we calculated using the Pivot table in Solution D (e.g. P(Loan = 1) = **0.095** and P(Loan = 0) = **0.905**)
+
+```{r}
+# Predict the default status of test dataset 
+valid.predict.class <- predict(train.nb, valid_data)
+valid.predict.prob <- predict(train.nb, valid_data, type = "raw")
+library("gmodels")
+# Show the confusion matrix of the classifier
+CrossTable(x=valid_data$`Personal Loan`, y=valid.predict.class, prop.chisq = FALSE) 
+```
+
+
+### Entry that corresponds to P(Loan = 1 | CC = 1, Online = 1)
+
+```{r}
+test.df <- data.frame(CreditCard = c("1"), Online = c("1"))
+test.predict.class <- predict(train.nb, test.df)
+test.predict.class
+test.predict.prob <- predict(train.nb, test.df, type = "raw")
+test.predict.prob
+
+```
+Looking at the probabilities, we see that value for `P(Loan = 1 | CC = 1, Online = 1)` = **0.09204853**
+which is very similar to the probability we got from Naive Bayes formula = **0.0938** (Solution E) and value calculated using pivot table = **0.0163** (Solution B)
