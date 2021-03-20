@@ -1,0 +1,309 @@
+---
+title: "Assignment 4"
+author: "Sandeep More"
+date: "3/16/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Assignment 4 - K-Means clustering
+Use k-Means for clustering in exploring and understand the structure of the pharmaceutical industry using given financial measures.
+
+## Data prep
+
+Load given data.
+```{r include=FALSE}
+library(readr)
+# Data loading
+data <- read_csv("Pharmaceuticals.csv", )
+data.df <- as.data.frame(data)
+
+# Set row names
+row.names(data.df) <- data.df[,1]
+data.df <- data.df[,-1]
+data.df <- subset(data.df, select = -c(1,11:13))
+head(data.df)
+
+# Normalize the data
+data.df.norm <- sapply(data.df, scale)
+row.names(data.df.norm) <- row.names(data.df)
+head(data.df.norm)
+```
+
+## Calculate Distance
+```{r}
+#1. euclidean
+euclidean.dist <- dist(data.df.norm, method="euclidean")
+print(euclidean.dist)
+```
+
+## Clustering
+### Agglomerative Cluster
+
+```{r}
+#method could be "ward.D", "single", "complete", "average", "median", "centroid"
+agglo.cluster.ward <- hclust(euclidean.dist, method = "ward.D")
+plot(agglo.cluster.ward, hang = -1, ann=FALSE)
+
+agglo.cluster.single <- hclust(euclidean.dist, method = "single")
+plot(agglo.cluster.single, hang = -1, ann=FALSE)
+
+agglo.cluster.complete <- hclust(euclidean.dist, method = "complete")
+plot(agglo.cluster.complete, hang = -1, ann=FALSE)
+
+agglo.cluster.average <- hclust(euclidean.dist, method = "average")
+plot(agglo.cluster.average, hang = -1, ann=FALSE)
+
+agglo.cluster.median <- hclust(euclidean.dist, method = "median")
+plot(agglo.cluster.median, hang = -1, ann=FALSE)
+
+agglo.cluster.centroid <- hclust(euclidean.dist, method = "centroid")
+plot(agglo.cluster.centroid, hang = -1, ann=FALSE)
+
+```
+
+# Experimenting with number of clusters
+
+```{r}
+agglo.cluster.ward.cut <- cutree(agglo.cluster.ward, k = 5)
+print(agglo.cluster.ward.cut)
+
+agglo.cluster.single.cut <- cutree(agglo.cluster.single, k = 2.5)
+print(agglo.cluster.single.cut)
+```
+
+# Heatmap
+
+```{r}
+library(RColorBrewer)
+# Make the labels as cluster membership (determined from cuttree) : row name
+row.names(data.df.norm) <- paste(agglo.cluster.ward.cut, ": ", row.names(data.df), sep = "")
+
+# plot
+#color=rev(paste("gray", 1:99,sep = ""))
+#color = terrain.colors(256)
+color = colorRampPalette(brewer.pal(8, "Blues"))(25)
+heatmap(as.matrix(data.df.norm), Colv = NA, hclustfun = hclust, col = color)
+```
+
+# K-Means
+
+```{r}
+#head(data.df.norm)
+# run k-means
+k <- 6
+
+for(k in c(3,4,5,6,7)) {
+    km <- kmeans(data.df.norm, k)
+    print("-------------------------------------------------------------------------")
+    # see cluster
+    sprintf("K-means clusters with k = %s", k)
+    print(km$cluster)
+    # see centroids
+    sprintf("K-means centroids for k = %s", k)
+    print(km$centers)
+    # see within cluster sum of squares
+    sprintf("Within-cluster sum of squares for k = %s", k)
+    print(km$withinss)
+    
+    # xaxt
+    ## A character which specifies the x axis type. Specifying "n" suppresses plotting of the axis. 
+    ## The standard value is "s": for compatibility with S values "l" and "t" are     accepted  but are equivalent to "s": any value other than "n" implies plotting.
+    
+    # type="l" is for lines
+    plot(c(0), xaxt = 'n', ylab = "", type = "l", ylim = c(min(km$centers), max(km$centers)), xlim = c(0, 8), main = paste0("Cluster with K = ",k))
+    
+    #label x-axis
+    axis(1, at = c(1:9), labels = colnames(data.df))
+    
+    # plot centroids
+    for(i in 1:k)
+      lines(km$centers[i,], lty = i, lwd = 2, col = sample(rainbow(10)))
+    
+    # name the clusters
+    text(x = 0.5, y = km$centers[,1], labels = paste0("Clusters", c(1:k)))
+}
+```
+
+
+# Solutions
+Following are solutions 
+
+## Problem a, b
+
+### Statement
+a. Use only the numerical variables (1 to 9) to cluster the 21 firms. Justify the various choices made in conducting the cluster analysis, such as weights for different variables, the specific clustering algorithm(s) used, the number of clusters formed, and so on.
+b. Interpret the clusters with respect to the numerical variables used in forming the clusters.
+
+### Answer
+Here we attempted two different clustering types
+*Note*: Due to the stochastic nature of K-Means the cluster numbers might not align with the order the clusters are displayed. This does not affect the analysis but the naming (such as Cluster 1, Cluster 2) could be a bit misleading. Cluster are named properly at the end of the report.
+
+* Agglomerative clustering 
+* K-means
+which are discussed below
+
+#### Agglomerative clustering
+Agglomerative clustering is examples are shown in the first half of the report where we use different distance measures to cluster. 
+The distance measures used were
+
+* Single Linkage
+* Complete Linkage
+* Average Linkage
+* Centroid Linkage
+* Ward's method
+
+Using the above methods we get clusters of various sizes ranging from 3 - 5. 
+The cluster generated by Ward's and Average look promising 
+```{r}
+plot(agglo.cluster.ward, hang = -1, ann=FALSE)
+plot(agglo.cluster.average, hang = -1, ann=FALSE)
+plot(agglo.cluster.single, hang = -1, ann=FALSE)
+```
+Ward's method is better suited because it accounts for loss of information during clustering. Using Ward's method we see clusters size of 4 with with the utilities clustered as 
+
+* {ELN, MRX, AVE, WPI, AHM, IVX}
+* {AGN, PHA, BAY, CHTT}
+* {JNJ, MRK, GSK, PFE}
+* {WYE, BMY, AZN, SGP, NVS, ABT, LLY}
+
+Ward's method is more spread out with meaningful clusters unline others (single, average linkage)
+We can see, looking at the categorical variables not used in clustering (Median Recommendation, Geography, Exchange) that the clusters are roughly clustered around
+Median Recommendation + Location
+
+```{r}
+print(agglo.cluster.ward.cut)
+agglo.cluster.single.cut <- cutree(agglo.cluster.single, k = 4)
+print(agglo.cluster.single.cut)
+agglo.cluster.average.cut <- cutree(agglo.cluster.average, k = 4)
+print(agglo.cluster.average.cut)
+
+cluster.1 <- data[data$Symbol %in% c("ELN","MRX", "AVE", "WPI", "AHM", "IVX"), ]
+cluster.1
+
+cluster.2 <- data[data$Symbol %in% c("AGN","PHA", "BAY", "CHTT"), ]
+cluster.2
+
+cluster.3 <- data[data$Symbol %in% c("JNJ","MRK", "GSK", "PFE"), ]
+cluster.3
+
+cluster.4 <- data[data$Symbol %in% c("WYE","BMY", "AZN", "SGP", "NVS", "ABT", "LLY"), ]
+cluster.4
+```
+The following heatmap of summary statistics shows 4 clusters is also lines up well with Ward's method and strengthens our choice of using Ward's method.
+We can see 
+
+* Cluster 1 is characterized by high net profit margin and cluster 2 lack thereof.
+* Cluster 3 is characterized by high revenue growth
+* Cluster 4 is characterized by high market cap
+* We see some corelation between ROE and ROA
+
+
+```{r}
+library(RColorBrewer)
+# Make the labels as cluster membership (determined from cuttree) : row name
+row.names(data.df.norm) <- paste(agglo.cluster.ward.cut, ": ", row.names(data.df), sep = "")
+
+# plot
+#color=rev(paste("gray", 1:99,sep = ""))
+#color = terrain.colors(256)
+color = colorRampPalette(brewer.pal(8, "Blues"))(25)
+heatmap(as.matrix(data.df.norm), Colv = NA, hclustfun = hclust, col = color)
+```
+#### K-Means clustering
+
+```{r}
+k = 4
+# see cluster
+km <- kmeans(data.df.norm, k)
+```
+
+Comparing it with K-Means cluster we can see that K=4 is the most optiomal value (considering different K values earlier in the report), going by the profile plot we can make some observations
+
+* Cluster 1  is characterized by low Beta and PE ratio and high ROE, ROA and Asset Turnover
+* Cluster 2  is characterized by high Beta and low ROE unlike Cluster 1 
+* Cluster 3  is characterized by high PE Ratio and low ROE and ROA
+* Cluster 4  is characterized by average values for all variables
+
+```{r}
+plot(c(0), xaxt = 'n', ylab = "", type = "l", ylim = c(min(km$centers), max(km$centers)), xlim = c(0, 8), main = paste0("Cluster with K = ",k))
+    
+    #label x-axis
+    axis(1, at = c(1:9), labels = colnames(data.df))
+    
+    # plot centroids
+    for(i in 1:k)
+      lines(km$centers[i,], lty = i, lwd = 2, col = sample(rainbow(10)))
+    
+    # name the clusters
+    text(x = 0.5, y = km$centers[,1], labels = paste0("Clusters", c(1:k)))
+```
+
+We can see that Cluster 1 has lowest (9.2) within cluster dispersion and Cluster 2 has the highest (31.9) - Cluater labels may vary based on document generation
+
+```{r}
+sprintf("Within-cluster sum of squares for k = %s", k)
+print(km$withinss)
+```
+
+looking at the distances between clusters measured, we don't see any obvious outliers.
+We see that Cluster 1 and Cluster 3 are closely related and Cluster 1 and Cluster 2 are most distant.
+
+
+```{r}
+k = 4
+# see cluster
+km <- kmeans(data.df.norm, k)
+sprintf("K-means clusters with k = %s", k)
+print(km$cluster)
+# see centroids
+sprintf("K-means centroids for k = %s", k)
+print(km$centers)
+```
+
+### Summary
+Overall summary, looking at both the clustering mechanisms, we prefer to use Hierarchical Clustering with Ward's method because of better cluster splits. Clusters formed using this Ward's method and K-Means with cutoff = 4 and K = 4 are very similar in composition. This observation strengthens our choice of using K = 4. Net Profit margin, ROE and ROA are good indiactors of cluster splits.
+
+## Problem c
+c. Is there a pattern in the clusters with respect to the numerical variables (10 to 12)? (those not used in forming the clusters)
+Solution:
+Looking at the categorical variables not used in clustering (Median Recommendation, Geography, Exchange) that the clusters are roughly clustered around Median Recommendation + Location. There is no strong correlation though. The clusters were mostly split on Net Profit margin, ROE / ROA, Beta variables.
+
+## Problem d
+d. Provide an appropriate name for each cluster using any or all of the variables in the dataset.
+Solution:
+From our observations we can names the clusters as follows:
+
+#### High growth cluster
+* ELN - Elan Corporation, plc
+* MRX - Medicis Pharmaceutical Corporation
+* AVE - Aventis
+* WPI - Watson Pharmaceuticals, Inc.
+* AHM - Amersham plc
+* IVX - IVAX Corporation
+
+#### Low Profit & High PE ratio
+* AGN - Allergan, Inc.
+* PHA - Pharmacia Corporation
+* BAY - Bayer AG
+* CHTT - Chattem, Inc
+
+#### High market cap
+* JNJ - Johnson & Johnson
+* MRK - Merck & Co., Inc.
+* GSK - GlaxoSmithKline plc
+* PFE - Pfizer Inc
+
+#### High profit margin
+* WYE - Wyeth
+* BMY - Bristol-Myers Squibb Company
+* AZN - AstraZeneca PLC
+* SGP - Schering-Plough Corporation
+* NVS - Novartis AG
+* ABT - Abbott Laboratories
+* LLY - Eli Lilly and Company
+
+

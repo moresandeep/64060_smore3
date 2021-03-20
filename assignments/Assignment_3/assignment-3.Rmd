@@ -1,13 +1,14 @@
 ---
 title: "Naive Bayes Classification."
 output:
-  html_document:
-    df_print: paged
+  pdf_document:
     toc: yes
+  always_allow_html: true
   html_notebook:
     highlight: textmate
     theme: cerulean
-  pdf_document:
+  html_document:
+    df_print: paged
     toc: yes
 ---
 ***
