@@ -1,0 +1,285 @@
+---
+title: "Assignment 5"
+author: "Sandeep More"
+date: "04/25/2021"
+output: pdf_document
+---
+
+# Assignment 5 - Hierarchical Clustering
+Use hierarchical clustering to analyze consumer ratings for 77 breakfast cereals.
+
+## Data preprocessing
+Load given data and remove rows with any NA value in it
+```{r include=FALSE}
+library(readr)
+library(tidyr)
+# Data loading
+data <- read_csv("Cereals.csv", )
+data.df <- as.data.frame(data)
+data.df <- data.df[complete.cases(data.df), ]
+```
+
+## Dimension reduction
+We do not care about the following columns
+
+* 'mfr' (manufacturer) 
+* 'type' (hot or cold) 
+* 'shelf' - we don't care which shelf it is placed, unrelated to health
+
+so we can eliminate these columns
+
+```{r include=FALSE}
+# Set row names
+row.names(data.df) <- data.df[,1]
+data.df <- subset(data.df, select = -c(name,mfr,type, shelf))
+```
+
+## Normalizing 
+Note the data used has units milligrams for some and grams for others. There are also different units used for other data. Let's normalize the data to make sure units don't affect our clusters.
+
+```{r}
+# Normalize the data
+data.df.norm <- sapply(data.df, scale)
+row.names(data.df.norm) <- row.names(data.df)
+#head(data.df.norm)
+```
+
+## Calculate Distance
+Calculate distance using euclidean method.
+```{r}
+#1. euclidean
+euclidean.dist <- dist(data.df.norm, method="euclidean")
+#print(euclidean.dist)
+```
+
+
+
+The problem here is that we have way too many variables to get any meaningful clusters out. Let us try to reduce dimensions using PCA
+
+## PCA
+For details on PCA : Data Mining for Business Analytics (R) Chapter 4, pg:101 
+Let us try to run PCA and see how the data are corelated and whether we can remove some of the attributes.
+
+```{r}
+# normalize the data and compute PCs on all the dimensions
+pcs.cor <- prcomp(data.df, scale. = T)
+summary(pcs.cor)
+# see first 7 PCs
+pcs.cor$rotation[,1:7]
+```
+
+### PC Analysis
+Looking at the PC analysis we can see that we need 7 principal components to account for more than 95% of variability (looking at the Cumulative Proportion for PC7 = 0.95521). The first 3 components account for more than 70% of variability.
+
+Looking at the weights for PC1 we can see that it measures balance between two sets of attributes
+
+* Calories, cups, sugars, sodium (high positive weights) and
+* protein, fiber, potassium and ratings (high negative weights)
+
+I couldn't reduce dimensions looking at this data, they all look like they introduce some variance. We will look at the PC Analysis later in summary analysis.
+
+### Reduce dimensions
+More details see: https://stats.stackexchange.com/questions/57467/how-to-perform-dimensionality-reduction-with-pca-in-r
+
+```{r}
+# eigenvalues
+pcs.cor$sdev
+length(pcs.cor$sdev)
+dim(pcs.cor$rotation)
+# see first 7 PCs
+#pcs.cor$x[,1:7]
+#dim(pcs.cor$x)
+```
+
+By squaring the eigenvalues, we get the variance explained by each PC:
+
+```{r}
+# By squaring the eigenvalues, we get the variance explained by each PC:
+plot(cumsum(pcs.cor$sdev^2/sum(pcs.cor$sdev^2))) #cumulative explained variance
+```
+
+The above plot of eigenvalues confirms that PC7 gives most variance.
+
+## Clustering
+### Agglomerative Cluster
+Use Agnes to compare the clustering from single linkage, complete linkage, average linkage, and Ward.
+Here we are using the package ggdendrogram 
+
+```{r}
+library(ape)
+library(ggplot2)
+library(ggdendro)
+# More info on dendogram plotting
+# https://www.gastonsanchez.com/visually-enforced/how-to/2012/10/03/Dendrograms/
+
+#method could be "ward.D", "single", "complete", "average", "median", "centroid"
+agglo.cluster.ward <- hclust(euclidean.dist, method = "ward.D")
+# Put the labels at the same height: hang = -1
+#plot(agglo.cluster.ward, hang = -1, ann=FALSE)
+#plot(as.phylo(agglo.cluster.ward), cex = 0.9)
+ggdendrogram(agglo.cluster.ward, theme_dendro = FALSE)
+
+agglo.cluster.single <- hclust(euclidean.dist, method = "single")
+#plot(agglo.cluster.single, hang = -1, ann=FALSE)
+ggdendrogram(agglo.cluster.single, theme_dendro = FALSE)
+
+agglo.cluster.complete <- hclust(euclidean.dist, method = "complete")
+#plot(agglo.cluster.complete, hang = -1, ann=FALSE)
+ggdendrogram(agglo.cluster.complete, theme_dendro = FALSE)
+
+agglo.cluster.average <- hclust(euclidean.dist, method = "average")
+#plot(agglo.cluster.average, hang = -1, ann=FALSE)
+ggdendrogram(agglo.cluster.average, theme_dendro = FALSE)
+
+agglo.cluster.median <- hclust(euclidean.dist, method = "median")
+#plot(agglo.cluster.median, hang = -1, ann=FALSE)
+ggdendrogram(agglo.cluster.median, theme_dendro = FALSE)
+
+agglo.cluster.centroid <- hclust(euclidean.dist, method = "centroid")
+#plot(agglo.cluster.centroid, hang = -1, ann=FALSE)
+ggdendrogram(agglo.cluster.centroid, theme_dendro = FALSE)
+
+```
+### Best Approach
+Looking at the above dendograms it apepars that Ward's method appears to cluster better. Unlike the other methods, Ward's method measuring the distance directly, it analyzes the variance of clusters. [Ward’s is said to be the most suitable method for quantitative variables](https://www.coursehero.com/file/p7j8gb6l/Wards-Method-Wards-method-is-an-important-hierarchical-clustering-method-It-is/). 
+
+Also, we can see that 4 clusters stand out. We can use 4 as a as a good starting point and then experiment with different values of k. 
+
+
+### Experimenting with number of clusters
+
+```{r}
+agglo.cluster.ward.cut.4 <- cutree(agglo.cluster.ward, k = 4)
+agglo.cluster.ward.cut.5 <- cutree(agglo.cluster.ward, k = 5)
+agglo.cluster.ward.cut.6 <- cutree(agglo.cluster.ward, k = 6)
+agglo.cluster.ward.cut.8 <- cutree(agglo.cluster.ward, k = 8)
+agglo.cluster.ward.cut.9 <- cutree(agglo.cluster.ward, k = 9)
+#print(agglo.cluster.ward.cut)
+```
+
+
+## Heatmap
+
+```{r}
+library(RColorBrewer)
+# Make the labels as cluster membership (determined from cuttree) : row name
+row.names(data.df.norm) <- paste(agglo.cluster.ward.cut.4, ": ", row.names(data.df), sep = "")
+
+# plot
+#color=rev(paste("gray", 1:99,sep = ""))
+#color = terrain.colors(256)
+color = colorRampPalette(brewer.pal(8, "Blues"))(25)
+heatmap(as.matrix(data.df.norm), Colv = NA, hclustfun = hclust, col = color)
+
+
+##### 5 cuts ####
+row.names(data.df.norm) <- paste(agglo.cluster.ward.cut.5, ": ", row.names(data.df), sep = "")
+
+color = colorRampPalette(brewer.pal(8, "Blues"))(25)
+heatmap(as.matrix(data.df.norm), Colv = NA, hclustfun = hclust, col = color)
+
+##### 6 cuts ####
+row.names(data.df.norm) <- paste(agglo.cluster.ward.cut.6, ": ", row.names(data.df), sep = "")
+
+color = colorRampPalette(brewer.pal(8, "Blues"))(25)
+heatmap(as.matrix(data.df.norm), Colv = NA, hclustfun = hclust, col = color)
+
+##### 8 cuts ####
+row.names(data.df.norm) <- paste(agglo.cluster.ward.cut.8, ": ", row.names(data.df), sep = "")
+
+color = colorRampPalette(brewer.pal(8, "Blues"))(25)
+heatmap(as.matrix(data.df.norm), Colv = NA, hclustfun = hclust, col = color)
+
+##### 9 cuts ####
+row.names(data.df.norm) <- paste(agglo.cluster.ward.cut.9, ": ", row.names(data.df), sep = "")
+
+color = colorRampPalette(brewer.pal(8, "Blues"))(25)
+heatmap(as.matrix(data.df.norm), Colv = NA, hclustfun = hclust, col = color)
+
+```
+
+### Value of K
+Looking at the heat map generated for cluster of size 4,5,6,8 and 9 we can see that the best value of K=8 beyond 8 we see splintered clusters.
+
+## Cluster stability
+Here we use [clVlaid package](https://cran.r-project.org/web/packages/clValid/vignettes/clValid.pdf) to determine cluster validity.
+clValid performns cluster validity by partitioning the data so we do not have to do it manually, this is the reason why this was chosen. 
+Here we are specifically interested in the following measurements:
+
+* internal - Take only the data set and  the  clustering  partition  as  input  and  use  intrinsic  information  in  the data  to  assess  the  quality  of  the  clustering 
+* stability - Evaluate  the  consistency  of a clustering result by comparing it with the clusters obtained after each column is removed, one at a time.
+
+We are looking for the following values to find optimum value of k:
+
+* Internal Measures
+  * Connectivity - Describes the connectivity between NN and should be minimized, 
+  * Silhouette - Silhouette value measures the degree of confidence in the clustering assignment of a particular observation, should be maximized
+  * Dunn Index - Ratio of the smallest distance between observations not in the same cluster to the largest intra-cluster distance, should  be maximized
+* Stability Measures - the following measures should all be minimized
+  * APN - average proportion of non-overlap
+  * AD - average distance
+  * ADM - average distance between mean
+  * FOM - figure of merit
+
+
+```{r}
+# "ward","single","complete","average","median","centroid"
+library(clValid)
+val.ward <- clValid(data.df.norm, nClust = c(4:10, 15), clMethods = "agnes", method = "ward", validation = c("internal", "stability"))
+summary(val.ward)
+
+val.single <- clValid(data.df.norm, nClust = c(4:10, 15), clMethods = "agnes", method = "single", validation = c("internal", "stability"))
+summary(val.single)
+
+val.complete <- clValid(data.df.norm, nClust = c(4:10, 15), clMethods = "agnes", method = "complete", validation = c("internal", "stability"))
+summary(val.complete)
+
+val.average <- clValid(data.df.norm, nClust = c(4:10, 15), clMethods = "agnes", method = "average", validation = c("internal", "stability"))
+summary(val.average)
+
+val.kmeans <- clValid(data.df.norm, nClust = c(4:10, 15), clMethods = c("kmeans","pam"), validation = c("internal", "stability"))
+summary(val.kmeans)
+
+```
+
+Looking at the summary ouput for different methods, we see that k=10 is recommended. Comparing it with the previous results (PCA, Heatmaps and dendograms) we think value of k=8 would work the best. The stability numbers do not look good and are concerning. We tried to use other methods such as kmeans and pam to see if the stability numbers improve (results above) but they do not. At this point I belive further works needs to be done to explore why cluster stability is low and how it can be fixed.
+
+## Healthy Cereals - cluster
+
+### Data normalization
+Of course the data needs to be normalized. There units for the data are different, e.g. sodium is measured in milligrams and potassium in grams so the clustering without normalization would be skewed. 
+
+### Summary
+Healthy is a relative term and depends on various factors such as every child has different nutrition needs. We could debate, should high calories be classified as unhealthy since calories are essential to growing children. We need more information on what healthy means to be able to recommend a Healthy Cereals cluster. For the sake of this assignment we assume some requirements, such as cerials with low sugar and calories and high protein and fiber are healthy.
+
+```{r}
+# summary results
+
+# Chosen dendogram
+ggdendrogram(agglo.cluster.ward, theme_dendro = FALSE)
+
+# Chosen heatmap
+color = colorRampPalette(brewer.pal(8, "Blues"))(25)
+heatmap(as.matrix(data.df.norm), Colv = NA, hclustfun = hclust, col = color)
+
+# PCAnalysis
+print(pcs.cor$rotation[,1:7])
+```
+
+For a healthy cluster we would recomment cluster #7 which has following properties
+
+* High in protein
+* High in carbs
+* High in fiber
+* High in potassium
+* Highest ratings
+* Low on calories
+* Low on sugar
+
+E.g. of the brands that fall into this cluster are (extrememe right of dendogram)
+
+* Strawberry Fruit Wheats
+* Maypo
+* Shredded Wheat n'Bran
+* Shredded Wheat
+
