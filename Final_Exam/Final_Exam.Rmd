@@ -1,0 +1,372 @@
+---
+title: "FinalExam"
+author: "Sandeep More"
+date: "5/5/2021"
+output: pdf_document
+---
+
+# Final Exam
+Segmenting Consumers of Bath Soap
+
+## Data preprocessing
+Load given data
+```{r include=FALSE}
+library(readr)
+library(tidyr)
+# Data loading
+data <- read_csv("BathSoap.csv", )
+data.df.orig <- as.data.frame(data)
+#head(data.df)
+# Set row names
+data.df <- data.df.orig
+row.names(data.df) <- data.df.orig[,1]
+data.df <- data.df[,-1]
+head(data.df)
+```
+
+## Data preprocessing 
+
+* Clean the data by removing % symbols
+
+```{r include=FALSE}
+# remove % sign
+data.df.clean <- data.frame(sapply(data.df, function(x) as.numeric(gsub("%", "", x))))
+#head(data.df)
+# Normalize the data
+data.df.norm <- sapply(data.df.clean, scale)
+row.names(data.df.norm) <- data.df.orig[,1]
+head(data.df.norm)
+```
+
+
+### Split the data
+Split the data into two categories
+
+* Demographics & Posession - updated annualy
+* Purchase summary - Update monthly
+
+```{r include=FALSE}
+data.df.demo <- data.df.norm[,c("SEC", "FEH", "MT", "SEX", "AGE", "EDU", "HS", "CHILD", "CS", "Affluence.Index")]
+row.names(data.df.demo) <- data.df.orig[,1]
+#head(data.df.demo)
+
+```
+
+## Problem 1
+Use k-means clustering to identify clusters of households based on given criteria
+
+### Purchase behavior (including brand loyalty)
+For this problem the data we need is available as Variable Type = "Purchase summary over the period", which contins detaila about number of brands and how the consumer habits were regarding a specific brand and other brands.
+
+Now, to measure brand loyalty we need to consider:
+
+* Number of different brands purchased by a customer, no. of consecutive instances of brand purchase, number of transactions etc. 
+* How much percent of a brand (any brand since we are only measuring loyalty) does a consumer buy. We can create a derived variable that looks at all the "Brandwise purchase" and gets the max value. We call this variable as `brand.vol.max` - the presumption here would be that if a customer buys more of brand A they are loyal to that brand (which might or might not be true). We also conside other brands which indicates consumer's likelyhood to choose other brands.
+
+
+```{r include=FALSE}
+data.df.brand <- data.df.norm[,c(11:18, 30)]
+data.df.brand  <- as.data.frame(data.df.brand)
+# Create a new derived variable brand.vol.max
+for (i in 1:nrow(data.df.norm)) {
+  data.df.brand$brand.vol.max[i]  <- max(data.df.norm[i, c(22:29)])
+}
+
+head(data.df.brand)
+```
+#### K - Means
+Let's calcualte K-Means
+
+```{r include=FALSE}
+#1. euclidean
+data.df.brand.dist <- dist(data.df.brand, method="euclidean")
+```
+
+Find the optimum value of k using
+
+Elbow Chart
+```{r}
+library(factoextra)
+library(NbClust) 
+set.seed(13)
+fviz_nbclust(data.df.brand, kmeans, method = "wss")
+```
+
+Using Gap Statistic Method
+
+```{r}
+library(cluster)
+set.seed(13)
+gap_stat <- clusGap(data.df.brand, FUN = kmeans, nstart = 25,
+                    K.max = 10, B = 100)
+fviz_gap_stat(gap_stat)
+```
+Looking at the Elbow chart we can see that number of K should be around 5 and with the Gap stat method it shows us 8.
+We tried using k=5,4,3 and the value that we think is the base is k = 3 looking at the final clustering (and the visualization)
+
+```{r}
+set.seed(13)
+# Compute k-means clustering with k = 3
+data.df.brand.kmeans.3 <- kmeans(data.df.brand, 3, nstart = 50)
+print(data.df.brand.kmeans.3)
+#data.df.brand.kmeans.3
+# visualize
+fviz_cluster(data.df.brand.kmeans.3, data = data.df.brand)
+
+# Compute k-means clustering with k = 5
+data.df.brand.kmeans.5 <- kmeans(data.df.brand, 5, nstart = 50)
+print(data.df.brand.kmeans.5)
+#data.df.brand.kmeans.5
+# visualize
+fviz_cluster(data.df.brand.kmeans.5, data = data.df.brand)
+```
+
+#### Analysis
+Here we only analyr cluster with k=3 we think k=3 is segmented more meaningfully then k=5 for purposes of the study (marketing to consumers)
+K-means clustering with 3 clusters of sizes 102, 315, 183
+
+Cluster means:
+  No..of.Brands Brand.Runs Total.Volume No..of..Trans      Value Trans...Brand.Runs   Vol.Tran  Avg..Price Others.999 brand.vol.max
+1    -0.6140370 -0.9228896  -0.02107873    -0.4937273 -0.2381902          1.0843822  0.4463582 -0.35797842 -1.3384059      4.808923
+2    -0.2502972 -0.2350536  -0.48909843    -0.3795004 -0.4523625         -0.2222636 -0.2464976  0.09119428  0.3144380      1.074950
+3     0.7730896  0.9189979   0.85363953     0.9284306  0.9114185         -0.2218248  0.1755094  0.04255520  0.2047511      1.218621
+
+Here we can see that Cluster 1 has following properties
+
+* Lowest number of brands purchased 
+* Lowest Brand runs 
+* Highest average transaction/brand
+* Lowest other brand purchase
+* Highest volume purchase per  brand
+
+Cluster 3 has following properties
+
+* Highest number of brands purchased
+* Highest brand runs
+* Highest sum of volumes purchased
+* Highest number of transactions
+* Low average transaction/brand
+* Lowest volume purchase per brand
+
+Cluster 2 lies somewhere in between Cluster 1 and Cluster 3. 
+We can see that cluster 2 also has the highest number (n=315) than cluster 1 (n=102) and cluster 3 (n=183)
+We can safely conclude that Cluster 1 has the most loyal customers and Cluster 3 has the least loyal customers
+and Cluster 2 is where most of the customers are which like to try out different brands and they experiment with brands.
+
+### Basis for Purchase
+For the basis of purchase we will try to see if promotions affect the consumer purchase habits. As as result we will use the following variables
+
+* Pur Vol
+* No of Promo %
+* Pur Vol Promo 6%
+* Pur Vol Other Promo %
+* Price cat 1-4
+* Produce proposition/Promise
+
+```{r include=FALSE}
+data.df.pur <- data.df.norm[,c(19:21, 31:45)]
+data.df.pur  <- as.data.frame(data.df.pur)
+head(data.df.pur)
+```
+
+#### K - Means
+Let's calcualte K-Means
+
+```{r include=FALSE}
+#1. euclidean
+data.df.pur.dist <- dist(data.df.pur, method="euclidean")
+```
+
+Find the optimum value of k using
+
+Elbow Chart
+```{r}
+library(factoextra)
+library(NbClust) 
+set.seed(13)
+fviz_nbclust(data.df.pur, kmeans, method = "wss")
+```
+
+Using Gap Statistic Method
+
+```{r}
+set.seed(13)
+gap_stat <- clusGap(data.df.pur, FUN = kmeans, nstart = 25,
+                    K.max = 10, B = 100)
+fviz_gap_stat(gap_stat)
+```
+Looking at the charts we can see that K=3 is perhaps a good number
+
+```{r}
+set.seed(13)
+# Compute k-means clustering with k = 3
+data.df.pur.kmeans.3 <- kmeans(data.df.pur, 3, nstart = 50)
+print(data.df.pur.kmeans.3)
+#data.df.pur.kmeans.3
+# visualize
+fviz_cluster(data.df.pur.kmeans.3, data = data.df.pur)
+```
+
+#### Analysis
+K-means clustering with 3 clusters of sizes 78, 193, 329
+
+Cluster means:
+  Pur.Vol.No.Promo.... Pur.Vol.Promo.6.. Pur.Vol.Other.Promo..   Pr.Cat.1   Pr.Cat.2   Pr.Cat.3   Pr.Cat.4  PropCat.5   PropCat.6   PropCat.7  PropCat.8
+1            0.1856666        -0.3842112             0.1912587 -0.7825205 -1.1334328  2.3701003 -0.3204763 -1.0914607 -0.17089192 -0.44919415 -0.4629703
+2           -0.5626809         0.5576736             0.2131738  1.1091649 -0.4708722 -0.4653448 -0.2106562 -0.3516447  0.11719213  0.24917427  0.5131099
+3            0.2860651        -0.2360563            -0.1703973 -0.4651435  0.5449425 -0.2889248  0.1995556  0.4650497 -0.02823256 -0.03967626 -0.1912417
+
+    PropCat.9 PropCat.10  PropCat.11  PropCat.12 PropCat.13 PropCat.14  PropCat.15
+1 -0.16226455 -0.2570818 -0.22953559 -0.16301187 -0.2325107  2.3724613 -0.22967026
+2  0.13143273  0.3787795 -0.01931633  0.23567662  0.4408922 -0.4620933  0.04781956
+3 -0.03863186 -0.1612525  0.06575023 -0.09960688 -0.2035148 -0.2913920  0.02639850
+
+
+* Cluster 1 is responding nicely to price category 3 and proposition category 14. It does not respond well to Price category 1,5 and any proposition category other than 14 which is interesting.
+Cluster 1 also has least number of observations (n=78)
+* Cluster 2 responds well to promitions and as expected does not respond well to no promotions so we can assume that the customers in this cluster are highely motivated by discounts and propmotions.
+They also respond well to price category 1 and promotion categories 6-10,12,13,15 and do not respond well to other price category and purchase categories.
+* Cluster 3 responds well to no promotions, looks like consumers in this cluster are not motivated by promitions. They respond well to price category 2, 4, 5 and promotion category 11. Intrestingly this cluster has the largest number of observations (n=329)
+
+### Purchase Behavior and Basis of Purchase
+Here we consider all the above variables. 
+
+```{r include=FALSE}
+data.df.all <- cbind(data.df.brand, data.df.pur)
+head(data.df.all)
+```
+
+#### K - Means
+Let's calcualte K-Means
+
+Find the optimum value of k using
+
+Elbow Chart
+```{r}
+library(factoextra)
+library(NbClust) 
+set.seed(13)
+fviz_nbclust(data.df.all, kmeans, method = "wss")
+```
+
+Using Gap Statistic Method
+
+```{r}
+set.seed(13)
+gap_stat <- clusGap(data.df.all, FUN = kmeans, nstart = 25,
+                    K.max = 10, B = 100)
+fviz_gap_stat(gap_stat)
+```
+
+Looking at the charts and considering that the marketing efforts would support two to five different promotional approaches, k=4 seems to be a good value.
+
+```{r}
+set.seed(13)
+# Compute k-means clustering with k = 4
+data.df.all.kmeans.4 <- kmeans(data.df.all, 4, nstart = 50)
+print(data.df.all.kmeans.4)
+#data.df.all.kmeans.4
+# visualize
+fviz_cluster(data.df.all.kmeans.4, data = data.df.all)
+```
+
+#### Analysis
+K-means clustering with 4 clusters of sizes 40, 288, 70, 202
+
+Cluster means:
+  No..of.Brands  Brand.Runs Total.Volume No..of..Trans       Value Trans...Brand.Runs   Vol.Tran Avg..Price  Others.999 brand.vol.max Pur.Vol.No.Promo....
+1   -0.40302775 -0.81534002  -0.05831701   -0.45780771  0.07909402          0.6362451  0.3190068  0.3941736 -1.27786148      7.302793            0.1082743
+2    0.05196104 -0.02621079   0.21350378   -0.02752712  0.08913830         -0.1604637  0.2104303 -0.3404089  0.09352442      1.190961            0.1809100
+3   -0.57484960 -0.80331672   0.07589467   -0.42194435 -0.55565205          1.0474825  0.4965263 -1.3088637 -1.27596356      2.583395            0.2396606
+4    0.20492972  0.47720039  -0.31915363    0.27611992  0.04980224         -0.2601982 -0.5352527  0.8608480  0.56186571      1.169212           -0.3624222
+
+  Pur.Vol.Promo.6.. Pur.Vol.Other.Promo..   Pr.Cat.1   Pr.Cat.2   Pr.Cat.3   Pr.Cat.4  PropCat.5   PropCat.6  PropCat.7  PropCat.8   PropCat.9 PropCat.10
+1       0.004476381           -0.18297411 -0.2029129  0.8103512 -0.4364590 -0.4100657 -0.5836170  0.06386371  0.8079389  0.2792642 -0.35126414 -0.2230794
+2      -0.176891651           -0.07257201 -0.5075196  0.4429335 -0.2220330  0.3336021  0.5689402 -0.02666001 -0.1852715 -0.2201183 -0.07035438 -0.1708574
+3      -0.478972755            0.22251373 -0.7848684 -1.2090708  2.4892721 -0.3608966 -1.1445341 -0.22057973 -0.4563628 -0.4763799 -0.13158214 -0.2561271
+4       0.417296204            0.06259279  1.0357572 -0.3729898 -0.4596296 -0.2693664 -0.2989738  0.10180255  0.2623071  0.4236143  0.21546226  0.3765297
+
+    PropCat.11 PropCat.12 PropCat.13 PropCat.14  PropCat.15
+1  0.954631305 -0.1410229  0.6087465 -0.4304315 -0.24117355
+2 -0.065248641 -0.1357292 -0.2155251 -0.2256394  0.02735269
+3 -0.249197062 -0.1655249 -0.2410929  2.4917854 -0.25382822
+4 -0.009652719  0.2788003  0.2702865 -0.4565524  0.09671952
+
+Here we can see that two clusters (Cluster 1, Cluster 3) have less candidates (40, 70) than other two (Cluster 2, Cluster 4). 
+
+* Cluster 1 consumers seems to be the most loyal customers who are not swayed by discounts and promotions. They do seem to care about promises that the products make (proposition). This cluster also has the least number of members (n=40) looking at the data 
+	* Brand volume purchased per brand is the highest (way higher than other clusters)
+	* They have low numbers in brands purchased
+	* Brand runs are low
+	* Number of transactions of distinct brands are lowest
+	* Average transaction/ brand run is highest
+	* High Proposition cat 2, 7
+* Cluster 2 can primarily be defined by the proposition category, they care a lot about product proposition, higher values in Proposition cat 2,4,5. They also seem to experiment with other brands (high no. of brands and high other brand purchases). Cluster 2 has the highest number of members amongst all the clusters (n=288)
+* Cluster 3 consumers can be classified as "frugal" given low "No. of brands", "No. of transactions" and "value". They have the most "Average transactions/brand run"  and Volume per transaction. which indicates that they prefer to buy in bulk. They are inclined towards other promoitions and discounts (high Purchase volume under other promotion). They are also seem to care about promises that the products make (proposition) indicated by high Proposition category 14 and 2.
+* Cluster 4 consumers are high spenders, they have high number of brands and the highest brand runs. They seem to buy less volume and more frequently paying the most (highest Average price per transaction). They also seem to experiment a lot (high other brand purchases). They are also inclined towards discounts and promotions (especially promo code 6), and appear to be most influenced by produce proposition 1, 6.8,9,10,12,13 and 15
+
+## Problem 2 (demographic, brand loyalty, and basis for purchase)
+
+Here we include demographic info in the cluster creation.
+
+```{r include=FALSE}
+data.df.all.demo <- cbind(data.df.demo, data.df.all)
+head(data.df.all.demo)
+```
+#### K - Means
+Let's calcualte K-Means
+
+Find the optimum value of k using
+
+Elbow Chart
+```{r}
+library(factoextra)
+library(NbClust) 
+set.seed(13)
+fviz_nbclust(data.df.all.demo, kmeans, method = "wss")
+```
+
+Using Gap Statistic Method
+
+```{r}
+set.seed(13)
+gap_stat <- clusGap(data.df.all.demo, FUN = kmeans, nstart = 25,
+                    K.max = 10, B = 100)
+fviz_gap_stat(gap_stat)
+```
+
+Looking at the charts and considering that the marketing efforts would support two to five different promotional approaches, k=4 seems to be a good value.
+
+```{r}
+set.seed(13)
+# Compute k-means clustering with k = 4
+data.df.all.demo <- kmeans(data.df.all.demo, 4, nstart = 50)
+print(data.df.all.demo)
+#data.df.all.kmeans.4
+# visualize
+fviz_cluster(data.df.all.demo, data = data.df.all)
+```
+
+#### Analysis
+K-means clustering with 4 clusters of sizes 66, 431, 44, 59
+
+Cluster means:
+          SEC         FEH          MT        SEX         AGE        EDU         HS      CHILD          CS Affluence.Index No..of.Brands Brand.Runs Total.Volume No..of..Trans      Value Trans...Brand.Runs    Vol.Tran  Avg..Price Others.999 brand.vol.max Pur.Vol.No.Promo.... Pur.Vol.Promo.6.. Pur.Vol.Other.Promo..
+1 -0.25727195 -1.80475562 -1.90431150 -2.6805048 -0.63162774 -1.8462679 -1.8223924  1.4515254 -1.83625981      -1.4916636    -0.7291330 -0.8592797  -1.04269343   -1.19207192 -1.0030708         -0.3390380 -0.09233208  0.08100038 -0.1174025      1.804981          -0.04196942       -0.17848551            0.30204415
+2 -0.04250689  0.19250649  0.23562435  0.3498234  0.07788562  0.3255918  0.1970988 -0.2279307  0.21699402       0.2912677     0.1888753  0.2892358   0.09722397    0.22804946  0.1798034         -0.1695007 -0.08946189  0.12093198  0.2993729      1.109575          -0.03578233        0.07641421           -0.03941985
+3 -0.32497510  0.09758683  0.02197947  0.1932169  0.38373836  0.3434338  0.1340527  0.2004250  0.08988684       0.1834901    -0.2879318 -0.7150001  -0.06291343   -0.34526198  0.1058201          0.5722869  0.22458798  0.44214547 -1.2173356      7.002966           0.09611289        0.01766136           -0.18328995
+4  0.84066652  0.53982630  0.39259944  0.2989470 -0.14857221 -0.5692790  0.4988137 -0.1081565  0.40192716      -0.5959346    -0.3493813 -0.6184432   0.50309197   -0.07493294 -0.2703163          1.1906898  0.58932409 -1.30376457 -1.1477692      2.485438           0.23666440       -0.37172170            0.08677629
+     Pr.Cat.1   Pr.Cat.2   Pr.Cat.3   Pr.Cat.4  PropCat.5   PropCat.6    PropCat.7   PropCat.8   PropCat.9  PropCat.10  PropCat.11   PropCat.12  PropCat.13 PropCat.14  PropCat.15
+1  0.25018675 -0.3180835  0.2329356 -0.1761849 -0.1036176 -0.12097375 -0.077753582  0.12702773 -0.08816523  0.16504361 -0.18779002  0.254557229  0.08188569  0.2447797 -0.23086921
+2  0.08450512  0.1370934 -0.3226239  0.1039235  0.2298877  0.03855987 -0.003162087  0.01112694  0.06577698  0.03090294 -0.03339647 -0.001078873 -0.04796716 -0.3246806  0.08682974
+3 -0.15176518  0.7532476 -0.4423098 -0.3851764 -0.6015721  0.03898175  0.761486517  0.36708717 -0.31333455 -0.20915792  0.94217859 -0.158347532  0.64844527 -0.4362395 -0.22221010
+4 -0.78400616 -1.2074004  2.4260808 -0.2748316 -1.1148077 -0.17542767 -0.457810355 -0.49714199 -0.14820766 -0.25439144 -0.24860743 -0.158787990 -0.22478307  2.4233292 -0.21032217
+
+
+* Cluster 1 consumers seems to be ranked low in socialeconomic class have more childrean and are less affulant and are younger. They tend to have least number of brands, low brand runs and lowest total volume. They also seem to spend less and buy less on brands. They prefer other promotions (not promo code 6) prefer proposition category 1,10 and 12.
+Cluster 1 has the second lowest members (n=66)
+* Cluster 2 has more females and well educated and lowest number of children and are most affluent. They tend to prefer more brands have more brand runs and more brand transactions with least volume, which makes us conclude that they experiment a lot. They also don't seem to be motivated by promotions. Cluster 2 has highest membership (n=431)
+* Cluster 3 consumers seems to be ranked lowest in socialeconomic class. One thing that stands out is that they have the highest rate of volume purchase for any brand. They also seem to be moticated by some few brand propositions (2,7,6,11,13)
+* Cluster 4 consumers are ranked the highest in socialeconomic class are the most educated. They can be classified as loyal consumers, they have low number of brands and low brand runs and buy bigger volumes. They also have highest brand runs which makes us think they experiment frequently. They appear to buy at the lower price and do not seem to take advantage of promotions. They have the most "Average transactions/brand run"  and Volume per transaction. which indicates that they prefer to buy in bulk. One intresting thing that stands out is that they are driven by proposition category 3 and 14
+
+
